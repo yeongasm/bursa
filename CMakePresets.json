@@ -1,0 +1,228 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "defaults",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "23",
+        "CMAKE_CXX_STANDARD_REQUIRED": true,
+        "CMAKE_ARCHIVE_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}/build",
+        "CMAKE_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}/build",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/build/${presetName}/bin"
+      }
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "inherits": "defaults",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "macos-base",
+      "hidden": true,
+      "inherits": "defaults",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "ninja-generator",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "visual-studio-generator",
+      "hidden": true,
+      "generator": "Visual Studio 18 2026"
+    },
+    {
+      "name": "windows-ninja-msvc",
+      "hidden": true,
+      "inherits": ["ninja-generator"],
+      "toolchainFile": "${sourceDir}/cmake/Windows.MSVC.toolchain.cmake"
+    },
+    {
+      "name": "windows-ninja-clang",
+      "hidden": true,
+      "inherits": ["ninja-generator"],
+      "toolchainFile": "${sourceDir}/cmake/Windows.Clang.toolchain.cmake"
+    },
+    {
+      "name": "macos-ninja-clang",
+      "hidden": true,
+      "inherits": ["ninja-generator"],
+      "toolchainFile": "${sourceDir}/cmake/MacOS.Clang.toolchain.cmake"
+    },
+    {
+      "name": "macos-ninja-gcc",
+      "hidden": true,
+      "inherits": ["ninja-generator"],
+      "toolchainFile": "${sourceDir}/cmake/MacOS.GCC.toolchain.cmake"
+    },
+    {
+      "name": "windows-msvc-x64-ninja",
+      "displayName": "windows-msvc-x64-ninja",
+      "inherits": ["windows-base", "windows-ninja-msvc"],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "windows-msvc-x64-vs",
+      "displayName": "windows-msvc-x64-vs",
+      "inherits": ["windows-base", "visual-studio-generator"],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "windows-clang-x64-ninja",
+      "displayName": "windows-clang-x64-ninja",
+      "inherits": ["windows-base", "windows-ninja-clang"],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "windows-clang-x64-ninja-asan-ubsan",
+      "displayName": "windows-clang-x64-ninja-asan-ubsan",
+      "inherits": ["windows-base", "windows-ninja-clang"],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "ENABLE_ASAN_AND_UBSAN": true
+      }
+    },
+    {
+      "name": "macos-clang-arm64-ninja",
+      "displayName": "macos-clang-arm64-ninja",
+      "inherits": ["macos-base", "macos-ninja-clang"]
+    },
+    {
+      "name": "macos-gcc-arm64-ninja",
+      "displayName": "macos-gcc-arm64-ninja",
+      "inherits": ["macos-base", "macos-ninja-gcc"]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs-msvc-x64-debug",
+      "displayName": "MSVC x64 Debug",
+      "configurePreset": "windows-msvc-x64-vs",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs-msvc-x64-release",
+      "displayName": "MSVC x64 Release",
+      "configurePreset": "windows-msvc-x64-vs",
+      "configuration": "Release"
+    },
+    {
+      "name": "vs-msvc-x64-relwithdebinfo",
+      "displayName": "MSVC x64 Release With Debug Info",
+      "configurePreset": "windows-msvc-x64-vs",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-ninja-msvc-x64-debug",
+      "displayName": "Ninja MSVC x64 Debug",
+      "configurePreset": "windows-msvc-x64-ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-ninja-msvc-x64-release",
+      "displayName": "Ninja MSVC x64 Release",
+      "configurePreset": "windows-msvc-x64-ninja",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-ninja-msvc-x64-relwithdebinfo",
+      "displayName": "Ninja MSVC x64 Release With Debug Info",
+      "configurePreset": "windows-msvc-x64-ninja",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-ninja-clang-x64-debug",
+      "displayName": "Ninja Clang x64 Debug",
+      "configurePreset": "windows-clang-x64-ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-ninja-clang-x64-release",
+      "displayName": "Ninja Clang x64 Release",
+      "configurePreset": "windows-clang-x64-ninja",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-ninja-clang-x64-relwithdebinfo",
+      "displayName": "Ninja Clang x64 Release With Debug Info",
+      "configurePreset": "windows-clang-x64-ninja",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-ninja-clang-x64-debug-asan-ubsan",
+      "displayName": "Ninja Clang x64 Debug ASAN UBSAN",
+      "configurePreset": "windows-clang-x64-ninja-asan-ubsan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-ninja-clang-x64-relwithdebinfo-asan-ubsan",
+      "displayName": "Ninja Clang x64 Release With Debug Info ASAN UBSAN",
+      "configurePreset": "windows-clang-x64-ninja-asan-ubsan",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "macos-ninja-clang-arm64-debug",
+      "displayName": "Ninja Clang Arm64 Debug",
+      "configurePreset": "macos-clang-arm64-ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "macos-ninja-clang-arm64-release",
+      "displayName": "Ninja Clang Arm64 Release",
+      "configurePreset": "macos-clang-arm64-ninja",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos-ninja-clang-arm64-relwithdebinfo",
+      "displayName": "Ninja Clang Arm64 Release With Debug Info",
+      "configurePreset": "macos-clang-arm64-ninja",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "macos-ninja-gcc-arm64-debug",
+      "displayName": "Ninja GCC Arm64 Debug",
+      "configurePreset": "macos-gcc-arm64-ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "macos-ninja-gcc-arm64-release",
+      "displayName": "Ninja GCC Arm64 Release",
+      "configurePreset": "macos-gcc-arm64-ninja",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos-ninja-gcc-arm64-relwithdebinfo",
+      "displayName": "Ninja GCC Arm64 Release With Debug Info",
+      "configurePreset": "macos-gcc-arm64-ninja",
+      "configuration": "RelWithDebInfo"
+    }
+  ]
+}
