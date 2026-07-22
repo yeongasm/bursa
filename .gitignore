@@ -349,3 +349,5 @@ healthchecksdb
 .tokeignore
 
 CLAUDE.md
+
+.DS_Store

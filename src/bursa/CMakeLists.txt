@@ -47,6 +47,7 @@ endif()
 set(
 	source_list
 	"public/bursa/orderbook.hpp"
+	"public/bursa/tickbitset.hpp"
 	"public/bursa/meta.hpp"
 	"private/orderbook.cpp"
 )
