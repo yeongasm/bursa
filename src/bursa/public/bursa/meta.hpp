@@ -3,6 +3,7 @@
 #define BURSA_TYPES_HPP
 
 #include <type_traits>
+#include <string_view>
 
 using u8    = unsigned char;
 using u16   = unsigned short;
@@ -69,6 +70,15 @@ struct value_type_of<Environment>
 
 template <typename Environment>
 using value_type_of_t = typename value_type_of<Environment>::type;
+
+template <typename>
+struct instrument_id
+{
+    static constexpr std::string_view value = "None";
+};
+
+template <typename T>
+static constexpr std::string_view instrument_id_v = instrument_id<T>::value;
 }
 
 #endif // !BURSA_TYPES_HPP

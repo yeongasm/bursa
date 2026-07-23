@@ -46,10 +46,11 @@ endif()
 
 set(
 	source_list
-	"public/bursa/orderbook.hpp"
-	"public/bursa/tickbitset.hpp"
+	"public/bursa/order_book.hpp"
+	"public/bursa/tick_bitset.hpp"
+	"public/bursa/price_levels.hpp"
 	"public/bursa/meta.hpp"
-	"private/orderbook.cpp"
+	"private/order_book.cpp"
 )
 
 add_library(bursa STATIC ${source_list})
