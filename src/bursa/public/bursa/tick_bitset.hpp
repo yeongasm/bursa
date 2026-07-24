@@ -20,51 +20,54 @@ public:
     static constexpr size_t BITS_PER_WORD   = sizeof(value_type) * CHAR_BIT;
     static constexpr size_t npos            = std::numeric_limits<size_t>::max();
 
-    TickBitset() = default;
+    TickBitset(std::pmr::polymorphic_allocator<value_type> const& allocator) :
+        leafs(allocator),
+        roots(allocator)
+    {}
 
     auto resize(size_t tickCount) -> void
     {
         auto const leafWords = word_count(tickCount);
         auto const rootWords = word_count(leafWords);
 
-        m_leafs.resize(leafWords);
-        m_roots.resize(rootWords);
+        leafs.resize(leafWords);
+        roots.resize(rootWords);
     };
 
     auto set(size_t idx) -> void
     {
         auto const [leafIndex, leafBit] = split_index(idx);
 
-        if (m_leafs[leafIndex] == 0)
+        if (leafs[leafIndex] == 0)
         {
             auto const [rootIndex, rootBit] = split_index(leafIndex);
-            m_roots[rootIndex] |= value_type{ 1 } << rootBit;
+            roots[rootIndex] |= value_type{ 1 } << rootBit;
         }
 
-        m_leafs[leafIndex] |= value_type{ 1 } << leafBit;
+        leafs[leafIndex] |= value_type{ 1 } << leafBit;
     };
 
     auto clear(size_t idx) -> void
     {
         auto const [leafIndex, leafBit] = split_index(idx);
 
-        m_leafs[leafIndex] &= ~(value_type{ 1 } << leafBit);
+        leafs[leafIndex] &= ~(value_type{ 1 } << leafBit);
 
-        if (m_leafs[leafIndex] == 0)
+        if (leafs[leafIndex] == 0)
         {
             auto const [rootIndex, rootBit] = split_index(leafIndex);
-            m_roots[rootIndex] &= ~(value_type{ 1 } << rootBit);
+            roots[rootIndex] &= ~(value_type{ 1 } << rootBit);
         }
     };
 
     auto highest() const -> size_t
     {
-        for (size_t i = m_roots.size(); i-- > 0;)
+        for (size_t i = roots.size(); i-- > 0;)
         {
-            if (m_roots[i] != 0)
+            if (roots[i] != 0)
             {
-                size_t const leafIdx = i * BITS_PER_WORD + highest_bit(m_roots[i]);
-                return leafIdx * BITS_PER_WORD + highest_bit(m_leafs[leafIdx]);
+                size_t const leafIdx = i * BITS_PER_WORD + highest_bit(roots[i]);
+                return leafIdx * BITS_PER_WORD + highest_bit(leafs[leafIdx]);
             }
         }
         return npos;
@@ -72,20 +75,22 @@ public:
 
     auto lowest() const -> size_t
     {
-        for (size_t i = {}; i < m_roots.size(); ++i)
+        for (size_t i = {}; i < roots.size(); ++i)
         {
-            if (m_roots[i] != 0)
+            if (roots[i] != 0)
             {
-                size_t const leafIdx = i * BITS_PER_WORD + lowest_bit(m_roots[i]);
-                return leafIdx * BITS_PER_WORD + lowest_bit(m_leafs[leafIdx]);
+                size_t const leafIdx = i * BITS_PER_WORD + lowest_bit(roots[i]);
+                return leafIdx * BITS_PER_WORD + lowest_bit(leafs[leafIdx]);
             }
         }
         return npos;
     }
 
 private:
-    std::vector<value_type> m_leafs;
-    std::vector<value_type> m_roots;
+    using container_type = std::vector<value_type, std::pmr::polymorphic_allocator<value_type>>;
+
+    container_type leafs;
+    container_type roots;
 
     auto word_count(size_t bits) const -> size_t
     {

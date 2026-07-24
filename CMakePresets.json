@@ -37,7 +37,7 @@
     {
       "name": "ninja-generator",
       "hidden": true,
-      "generator": "Ninja Multi-Config",
+      "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
       }

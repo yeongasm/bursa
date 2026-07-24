@@ -1,9 +1,12 @@
 #pragma once
-#ifndef BURSA_TYPES_HPP
-#define BURSA_TYPES_HPP
+#ifndef BURSA_META_HPP
+#define BURSA_META_HPP
 
 #include <type_traits>
+#include <concepts>
+#include <memory_resource>
 #include <string_view>
+#include <limits>
 
 using u8    = unsigned char;
 using u16   = unsigned short;
@@ -81,4 +84,4 @@ template <typename T>
 static constexpr std::string_view instrument_id_v = instrument_id<T>::value;
 }
 
-#endif // !BURSA_TYPES_HPP
+#endif // !BURSA_META_HPP

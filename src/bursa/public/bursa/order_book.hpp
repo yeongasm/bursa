@@ -5,88 +5,48 @@
 #include <cassert>
 #include <string_view>
 #include <vector>
-#include <limits>
 
 #include <ankerl/unordered_dense.h>
-#include <plf_colony.h>
 
+#include "order_pool.hpp"
 #include "tick_bitset.hpp"
 
 namespace bursa
 {
-struct Order;
-
-struct PriceLevel
-{
-    Order* head;
-    Order* tail;
-    u32 totalQty;
-    u32 numOrders;
-};
-
-struct Order
-{
-    u32 qty;
-    Order* previous;
-    Order* next;
-};
-
-struct Prices
-{
-    u64 min;
-    u64 max;
-};
-
-struct OrderInfo
-{
-    order_id id;
-    u32 price;
-    u32 qty;
-};
-
-struct OrderBookCreateInfo
-{
-    u32 minPrice;
-    u32 maxPrice;
-    u64 minOrderBlockLimits = static_cast<u64>(std::numeric_limits<u16>::max());
-    u64 maxOrderBlockLimits = static_cast<u64>(std::numeric_limits<u16>::max());
-};
-
 template <typename Environment>
 class OrderBook : public non_copyable
 {
 public:
-
     using instrument_type = instrument_of_t<Environment>;
 
     auto best_bid() const -> std::pair<u64, PriceLevel const*>
     {
-        auto const idx = m_bidsBitset.highest();
+        auto const idx = bidsBitset.highest();
         if (idx == PriceLevelBitset::npos)
         {
             return {};
         }
-        return { static_cast<u64>(m_prices.min + idx), &m_bids[idx] };
+        return { static_cast<u64>(prices.min + idx), &bids[idx] };
     }
 
     auto best_ask() const -> std::pair<u64, PriceLevel const*>
     {
-        auto const idx = m_asksBitset.lowest();
+        auto const idx = asksBitset.lowest();
         if (idx == PriceLevelBitset::npos)
         {
             return {};
         }
-        return { static_cast<u64>(m_prices.min + idx), &m_asks[idx] };
+        return { static_cast<u64>(prices.min + idx), &asks[idx] };
     }
 
     auto add_bid_order(OrderInfo const& info) -> void
     {
-        return add_order(info, m_bids, m_bidsBitset);
+        return add_order(info, bids, bidsBitset);
     }
 
     auto add_ask_order(OrderInfo const& info) -> void
     {
-        return add_order(info, m_asks, m_asksBitset);
+        return add_order(info, asks, asksBitset);
     }
 
     auto modify_order(OrderInfo const& info) -> void
@@ -96,29 +56,30 @@ public:
         // 1. Fallback to a map but it will be slow.
         // 2. Don't let our order book handle this edge case. Instead, the client will be responsible in deciding which limit order book should the order be pushed to.
 
-        assert(info.price >= m_prices.min && info.price <= m_prices.max);
+        assert(info.price >= prices.min && info.price <= prices.max);
         assert(info.qty > 0);
 
-        auto it = m_orderIdMap.find(info.id);
-        if (it == m_orderIdMap.end())
+        auto it = orderMetadatas.find(info.id);
+
+        if (it == orderMetadatas.end())
         {
             return;
         }
 
-        OrderMetadata& metadata = it->second;
-        Order& order = *metadata.it;
+        auto& metadata = it->second;
+        auto& node = orders.at(metadata.orderIdx);
 
-        size_t const priceIndex = tick_index(info.price);
+        size_t const lvlIdx = tick_index(info.price);
 
         // On virtually every price-time-priority venue, a pure size-down **retains** queue position; only a price change or a size *increase* loses it
-        if (priceIndex == metadata.idx && info.qty <= order.qty)
+        if (lvlIdx == metadata.levelIdx && info.qty <= node.order.qty)
         {
-            metadata.level().totalQty -= (order.qty - info.qty);
-            order.qty = info.qty;
+            metadata.level().totalQty -= (node.order.qty - info.qty);
+            node.order.qty = info.qty;
             return;
         }
 
-        auto levels  = metadata.levels;
+        auto levels = metadata.levels;
         auto bitset = metadata.bitset;
 
         cancel_order(it);
@@ -127,176 +88,204 @@ public:
 
     auto cancel_order(order_id id) -> void
     {
-        auto it = m_orderIdMap.find(id);
-        if (it == m_orderIdMap.end())
+        auto it = orderMetadatas.find(id);
+
+        if (it == orderMetadatas.end())
         {
             return;
         }
+
         cancel_order(it);
     }
 
-    // auto execute_order() -> void
-    // {
+    auto execute_order(order_id id, u32 quantity) -> void
+    {
+        auto it = orderMetadatas.find(id);
 
-    // }
+        if (it == orderMetadatas.end())
+        {
+            return;
+        }
 
-    // auto print_order_book() const -> void
-    // {
+        auto& metadata = it->second;
+        auto& node = orders.at(metadata.orderIdx);
+        auto& level = metadata.level();
 
-    // }
+        quantity = std::min(quantity, node.order.qty);
+
+        level.totalQty -= quantity;
+        node.order.qty -= quantity;
+
+        if (node.order.qty == 0)
+        {
+            remove_order(it);
+        }
+    }
 
     constexpr auto instrument_id() const -> std::string_view
     {
         return instrument_id_v<instrument_type>;
     }
 
-    static auto from(OrderBookCreateInfo const& info) -> OrderBook
+    static auto from(Prices const& prices, std::pmr::polymorphic_allocator<std::byte> const& allocator = std::pmr::polymorphic_allocator<std::byte>{}) -> OrderBook
     {
-        OrderBook orderBook{ info.minPrice, info.maxPrice, info.minOrderBlockLimits, info.maxOrderBlockLimits };
+        OrderBook orderBook{ prices, allocator.resource() };
 
-        orderBook.m_orders.reserve(info.minOrderBlockLimits);
-        orderBook.m_orderIdMap.reserve(info.minOrderBlockLimits);
+        size_t const tickCount = static_cast<size_t>(prices.max - prices.min) + 1ull;
 
-        size_t const tickCount = static_cast<size_t>(info.maxPrice - info.minPrice) + 1ull;
+        orderBook.bids.resize(tickCount);
+        orderBook.asks.resize(tickCount);
 
-        orderBook.m_bids.resize(tickCount);
-        orderBook.m_asks.resize(tickCount);
+        orderBook.bidsBitset.resize(tickCount);
+        orderBook.asksBitset.resize(tickCount);
 
-        orderBook.m_bidsBitset.resize(tickCount);
-        orderBook.m_asksBitset.resize(tickCount);
+        orderBook.orderMetadatas.reserve(524'288);
 
         return orderBook;
     }
 
 private:
-
-    using order_book_iterator   = typename plf::colony<Order>::iterator;
     using PriceLevelBitset      = TickBitset<u64>;
-    using PriceLevels           = std::vector<PriceLevel>;
+    using PriceLevels           = std::vector<PriceLevel, std::pmr::polymorphic_allocator<PriceLevel>>;
 
     struct OrderMetadata
     {
         PriceLevels* levels;
         PriceLevelBitset* bitset;
-        size_t idx;
-        order_book_iterator it;
+        size_t levelIdx;
+        size_t orderIdx;
 
         auto level() -> PriceLevel&
         {
-            return (*levels)[idx];
+            return (*levels)[levelIdx];
         }
     };
 
+    using OrderMetadataMap = ankerl::unordered_dense::map<order_id, OrderMetadata>;
+    using order_metadata_iterator = OrderMetadataMap::iterator;
 
-    using OrderIdToOrderMap = ankerl::unordered_dense::map<order_id, OrderMetadata>;
-    using order_metadata_iterator = OrderIdToOrderMap::iterator;
+    OrderPool           orders;
+    OrderMetadataMap    orderMetadatas;
+    PriceLevels         bids;
+    PriceLevelBitset    bidsBitset;
+    PriceLevels         asks;
+    PriceLevelBitset    asksBitset;
+    Prices              prices;
 
-    plf::colony<Order>  m_orders;
-    OrderIdToOrderMap   m_orderIdMap;
-    PriceLevels         m_bids;
-    PriceLevelBitset    m_bidsBitset;
-    PriceLevels         m_asks;
-    PriceLevelBitset    m_asksBitset;
-    Prices              m_prices;
-
-    OrderBook(u32 minPrice, u32 maxPrice, u64 minBlockSize, u64 maxBlockSize) :
-        m_orders{plf::limits{ minBlockSize, maxBlockSize }},
-        m_orderIdMap{},
-        m_bids{},
-        m_asks{},
-        m_prices{ minPrice, maxPrice }
+    OrderBook(Prices const& prices, std::pmr::polymorphic_allocator<std::byte> const& allocator) :
+        orders{ 524'288, allocator.resource() },
+        orderMetadatas{},
+        bids(allocator.resource()),
+        bidsBitset{ allocator.resource() },
+        asks(allocator.resource()),
+        asksBitset{ allocator.resource() },
+        prices{ prices }
     {}
 
     auto add_order(OrderInfo const& info, PriceLevels& priceLevels, PriceLevelBitset& bitset) -> void
     {
-        assert(info.price >= m_prices.min && info.price <= m_prices.max);
+        assert(info.price >= prices.min && info.price <= prices.max);
         assert(info.qty > 0);
 
-        if (m_orderIdMap.contains(info.id))
+        if (orderMetadatas.contains(info.id))
         {
             return;
         }
 
-        auto it = m_orders.emplace(info.qty, nullptr, nullptr);
-
-        auto&& order = *it;
+        size_t const orderIdx = orders.emplace(info.qty);
+        auto&& node = orders.at(orderIdx);
         // Get index of price level.
-        size_t const idx = tick_index(info.price);
-        auto&& level = priceLevels[idx];
+        size_t const levelIdx = tick_index(info.price);
+        auto&& level = priceLevels[levelIdx];
 
-        link_to_level(level, order);
+        link_to_level(level, orderIdx);
 
-        map_id_to_order(info.id, idx, bitset, priceLevels, it);
+        level.tail = orderIdx;
+        level.totalQty += node.order.qty;
 
-        bitset.set(idx);
+        add_order_metadata(info.id, levelIdx, bitset, priceLevels, orderIdx);
+
+        bitset.set(levelIdx);
     }
 
     auto cancel_order(order_metadata_iterator it) -> void
     {
         auto&& metadata = it->second;
+        auto& level = metadata.level();
+        auto& node = orders.at(metadata.orderIdx);
 
-        // unlink order from price level.
-        unlink_from_level(metadata.level(), *metadata.it);
+        level.totalQty -= node.order.qty;
 
-        if (metadata.level().numOrders == 0)
-        {
-            metadata.bitset->clear(metadata.idx);
-        }
-
-        m_orders.erase(metadata.it);
-        m_orderIdMap.erase(it);
+        remove_order(it);
     }
 
-    auto link_to_level(PriceLevel& level, Order& order) -> void
+    auto remove_order(order_metadata_iterator it) -> void
     {
-        order.previous = level.tail;
+        auto& meta = it->second;
+        auto& level = meta.level();
 
-        if (level.tail != nullptr)
+        unlink_from_level(level, meta.orderIdx);
+
+        if (level.numOrders == 0)
         {
-            level.tail->next = &order;
+            meta.bitset->clear(meta.levelIdx);
+        }
+
+        orders.erase(meta.orderIdx);
+        orderMetadatas.erase(it);
+    }
+
+    auto link_to_level(PriceLevel& level, size_t orderIdx) -> void
+    {
+        auto& node = orders.at(orderIdx);
+
+        node.previous = level.tail;
+
+        if (level.tail != npos)
+        {
+            orders.at(level.tail).next = orderIdx;
         }
         else
         {
-            level.head = &order;
+            level.head = orderIdx;
         }
 
-        level.tail = &order;
-        level.totalQty += order.qty;
         ++level.numOrders;
     }
 
-    auto unlink_from_level(PriceLevel& level, Order& order) -> void
+    auto unlink_from_level(PriceLevel& level, size_t orderIdx) -> void
     {
-        if (order.previous != nullptr)
+        auto& node = orders.at(orderIdx);
+
+        if (node.previous != npos)
         {
-            order.previous->next = order.next;
+            orders.at(node.previous).next = node.next;
         }
         else
         {
-            level.head = order.next;
+            level.head = node.next;
         }
 
-        if (order.next != nullptr)
+        if (node.next != npos)
         {
-            order.next->previous = order.previous;
+            orders.at(node.next).previous = node.previous;
         }
         else
         {
-            level.tail = order.previous;
+            level.tail = node.previous;
         }
 
-        level.totalQty -= order.qty;
         --level.numOrders;
     }
 
     auto tick_index(u32 price) const -> size_t
     {
-        return static_cast<size_t>(price - m_prices.min);
+        return static_cast<size_t>(price - prices.min);
     }
 
-    auto map_id_to_order(order_id id, size_t idx, PriceLevelBitset& bitset, PriceLevels& levels, order_book_iterator it) -> void
+    auto add_order_metadata(order_id id, size_t levelIdx, PriceLevelBitset& bitset, PriceLevels& levels, size_t orderIdx) -> void
     {
-        m_orderIdMap.emplace(id, OrderMetadata{ &levels, &bitset, idx, it });
+        orderMetadatas.emplace(id, OrderMetadata{ &levels, &bitset, levelIdx, orderIdx });
     }
 };
 }
