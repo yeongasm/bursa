@@ -13,4 +13,4 @@ target_include_directories(
 	bursa
 	PUBLIC "public"
 )
-target_link_libraries(bursa PRIVATE mimalloc fmt plf_colony unordered_dense)
+target_link_libraries(bursa PRIVATE unordered_dense)

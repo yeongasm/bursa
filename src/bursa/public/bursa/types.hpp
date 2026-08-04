@@ -14,7 +14,6 @@ struct PriceLevel
     size_t tail = npos;    // Index of tail order.
     u32 totalQty;
     u32 numOrders;
-
 };
 
 struct Order
